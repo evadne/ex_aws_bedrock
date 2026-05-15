@@ -89,12 +89,17 @@ defmodule ExAws.Bedrock.Mantle.SSE do
     end
 
     defp verify_header!(headers, header, expected) do
-      case List.keyfind!(headers, header, 0) do
+      case Enum.find(headers, fn {name, _value} ->
+             String.downcase(name) == String.downcase(header)
+           end) do
         {_, ^expected} ->
           true
 
         {_, content_type} ->
           raise ExAws.Error, "Accepts #{expected}, received #{to_string(content_type)}"
+
+        nil ->
+          raise ExAws.Error, "Accepts #{expected}, received no #{header} header"
       end
     end
   else
