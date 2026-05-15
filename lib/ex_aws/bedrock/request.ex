@@ -3,7 +3,11 @@ defmodule ExAws.Bedrock.Request do
   Perform AWS requests signed with the correct service.
 
   Actions on Amazon Bedrock Runtime need to be signed with Bedrock.
+  Actions on Amazon Bedrock Powered by AWS Mantle need the Mantle host and
+  the `bedrock-mantle` signing service.
   """
+
+  @mantle_host {"region", "bedrock-mantle.region.api.aws"}
 
   @doc """
   Perform an AWS request with correct service.
@@ -32,5 +36,22 @@ defmodule ExAws.Bedrock.Request do
   defp check_service_override(%{service: :"bedrock-runtime"}, config_overrides),
     do: [{:service_override, :bedrock} | config_overrides]
 
+  defp check_service_override(%{service: :bedrock, path: "/v1/" <> _}, config_overrides),
+    do: mantle_config(config_overrides)
+
+  defp check_service_override(
+         %{service: :bedrock, path: "/anthropic/v1/" <> _},
+         config_overrides
+       ),
+       do: mantle_config(config_overrides)
+
   defp check_service_override(_, config_overrides), do: config_overrides
+
+  defp mantle_config(config_overrides) do
+    [
+      scheme: "https",
+      host: @mantle_host,
+      service_override: :"bedrock-mantle"
+    ] ++ config_overrides
+  end
 end

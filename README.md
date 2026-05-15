@@ -70,6 +70,28 @@ The Meta models can be invoked with a pure map input:
 }
 ```
 
+### Mantle
+
+Mantle exposes OpenAI-compatible and Anthropic-compatible API paths on the
+`bedrock-mantle.<region>.api.aws` hostname. Use the operation builders under
+`ExAws.Bedrock.Mantle` and execute them with the existing `ExAws.Bedrock`
+request helpers so requests are signed with the `bedrock-mantle` service name.
+
+```elixir
+body = %{
+  "model" => "openai.gpt-oss-120b",
+  "messages" => [%{"role" => "user", "content" => "Hello"}]
+}
+
+body
+|> ExAws.Bedrock.Mantle.chat_completion()
+|> ExAws.Bedrock.request()
+```
+
+For streaming, set `"stream" => true` and call `ExAws.Bedrock.stream!/2`. The
+Mantle stream yields raw Server-Sent Events bytes so callers can proxy matching
+OpenAI or Anthropic protocols without decoding and reconstructing events.
+
 ## Example
 
 Run the example script to sample the models and their quality of responses:
