@@ -31,7 +31,7 @@ defmodule ExAws.Bedrock.Mantle do
     %ExAws.Operation.BedrockMantle{
       http_method: :get,
       path: "/v1/models",
-      service: :bedrock
+      service: :"bedrock-mantle"
     }
   end
 
@@ -74,7 +74,7 @@ defmodule ExAws.Bedrock.Mantle do
       headers: headers,
       http_method: method,
       path: path,
-      service: :bedrock
+      service: :"bedrock-mantle"
     }
 
     %{post | stream_builder: &SSE.stream_raw!(post, nil, &1)}

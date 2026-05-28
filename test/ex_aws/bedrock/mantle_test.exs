@@ -17,7 +17,7 @@ defmodule ExAws.Bedrock.MantleTest do
       assert %BedrockMantle{
                http_method: :get,
                path: "/v1/models",
-               service: :bedrock,
+               service: :"bedrock-mantle",
                stream_builder: nil
              } = Mantle.list_models()
     end
@@ -31,7 +31,7 @@ defmodule ExAws.Bedrock.MantleTest do
                data: %{"model" => "openai.gpt-oss-120b"},
                http_method: :post,
                path: "/v1/chat/completions",
-               service: :bedrock,
+               service: :"bedrock-mantle",
                stream_builder: stream_builder
              } = request
 
@@ -49,7 +49,7 @@ defmodule ExAws.Bedrock.MantleTest do
                data: %{"model" => "openai.gpt-oss-120b"},
                http_method: :post,
                path: "/v1/responses",
-               service: :bedrock,
+               service: :"bedrock-mantle",
                stream_builder: stream_builder
              } = request
 
@@ -67,7 +67,7 @@ defmodule ExAws.Bedrock.MantleTest do
                data: %{"model" => "anthropic.claude-opus-4-7"},
                http_method: :post,
                path: "/anthropic/v1/messages",
-               service: :bedrock,
+               service: :"bedrock-mantle",
                stream_builder: stream_builder
              } = request
 

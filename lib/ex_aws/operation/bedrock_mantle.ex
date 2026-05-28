@@ -25,10 +25,11 @@ defmodule ExAws.Operation.BedrockMantle do
 
     * **Mantle host and signing service.** The request is rewritten to
       `bedrock-mantle.<region>.api.aws` and signed with the `bedrock-mantle`
-      SigV4 service name. The operation's `service` field stays at `:bedrock`
-      because `ExAws.Config.new/2` looks up the partition data for that
-      value before the protocol impl gets a chance to run, and
-      `:"bedrock-mantle"` is not in `priv/endpoints.exs`.
+      SigV4 service name (the operation's `service` field). `ExAws.Bedrock.Request`
+      dispatches BedrockMantle ops through `ExAws.Config.new(:bedrock, …)` to
+      get partition-safe defaults — `bedrock-mantle` is not in upstream ex_aws's
+      `priv/endpoints.exs` as of 2026-05 — and this operation's `perform/2` /
+      `stream!/2` then rewrite host/scheme/port for Mantle.
 
     * **Response body shape.** Mantle returns OpenAI- or
       Anthropic-shaped JSON on success and OpenAI-shaped error envelopes
@@ -50,7 +51,7 @@ defmodule ExAws.Operation.BedrockMantle do
             data: nil,
             params: %{},
             headers: [],
-            service: :bedrock
+            service: :"bedrock-mantle"
 
   @type t :: %__MODULE__{
           stream_builder: (any -> Enumerable.t()) | nil,
@@ -62,11 +63,10 @@ defmodule ExAws.Operation.BedrockMantle do
           data: map() | struct() | binary() | nil,
           params: map() | keyword(),
           headers: [{String.t(), String.t()}],
-          service: :bedrock
+          service: :"bedrock-mantle"
         }
 
   @mantle_host_template "bedrock-mantle.region.api.aws"
-  @signing_service :"bedrock-mantle"
 
   @doc """
   Apply the Mantle host rewrite and `bedrock-mantle` signing override to a
@@ -84,7 +84,9 @@ defmodule ExAws.Operation.BedrockMantle do
     |> Map.put(:host, host)
     |> Map.put(:scheme, "https")
     |> Map.put(:port, 443)
-    |> Map.put(:service_override, @signing_service)
+    # No `:service_override` here — the operation's `service` field is
+    # already `:"bedrock-mantle"` and `ExAws.Auth.headers/6` will use it
+    # directly for signing.
   end
 
   @doc """
