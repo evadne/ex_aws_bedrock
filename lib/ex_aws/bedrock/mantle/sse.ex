@@ -85,21 +85,31 @@ defmodule ExAws.Bedrock.Mantle.SSE do
     end
 
     defp verify_event_stream!(headers) do
-      verify_header!(headers, "Content-Type", @content_type)
+      verify_content_type!(headers, @content_type)
     end
 
-    defp verify_header!(headers, header, expected) do
+    # Compare media type only, ignoring parameters (e.g. `; charset=utf-8`).
+    # Mantle's Anthropic-compatible Messages surface returns
+    # `text/event-stream; charset=utf-8` while the OpenAI-compatible Chat and
+    # Responses surfaces return `text/event-stream` without the charset
+    # parameter — both are valid `text/event-stream` content types per
+    # RFC 7231 §3.1.1, and rejecting the parameterised form was a strict
+    # pattern-match bug in earlier versions of this verifier.
+    defp verify_content_type!(headers, expected) do
       case Enum.find(headers, fn {name, _value} ->
-             String.downcase(name) == String.downcase(header)
+             String.downcase(to_string(name)) == "content-type"
            end) do
-        {_, ^expected} ->
-          true
-
-        {_, content_type} ->
-          raise ExAws.Error, "Accepts #{expected}, received #{to_string(content_type)}"
-
         nil ->
-          raise ExAws.Error, "Accepts #{expected}, received no #{header} header"
+          raise ExAws.Error, "Accepts #{expected}, received no Content-Type header"
+
+        {_, value} ->
+          received = value |> to_string() |> String.split(";", parts: 2) |> hd() |> String.trim()
+
+          if String.downcase(received) == String.downcase(expected) do
+            true
+          else
+            raise ExAws.Error, "Accepts #{expected}, received #{value}"
+          end
       end
     end
   else
