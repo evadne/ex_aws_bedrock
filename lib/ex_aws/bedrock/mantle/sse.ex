@@ -22,20 +22,21 @@ defmodule ExAws.Bedrock.Mantle.SSE do
     @doc """
     Stream raw SSE bytes from a Mantle response.
     """
-    def stream_raw!(
-          %{service: service, data: data, headers: headers} = post_operation,
-          _opts,
-          config
-        ) do
-      encoded_data = config[:json_codec].encode!(data)
+    def stream_raw!(%ExAws.Operation.BedrockMantle{} = post_operation, _opts, config) do
+      config = ExAws.Operation.BedrockMantle.apply_routing(config)
+      encoded_data = ExAws.Operation.BedrockMantle.encode_body(post_operation, config)
       url = build_request_url(post_operation, config)
-      headers = [{"user-agent", @user_agent} | headers]
+
+      headers =
+        post_operation
+        |> ExAws.Operation.BedrockMantle.build_headers(encoded_data)
+        |> List.keystore("user-agent", 0, {"user-agent", @user_agent})
 
       {:ok, full_headers} =
         ExAws.Auth.headers(
           :post,
           url,
-          service,
+          post_operation.service,
           config,
           headers,
           encoded_data

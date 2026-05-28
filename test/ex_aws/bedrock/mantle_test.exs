@@ -3,7 +3,7 @@ defmodule ExAws.Bedrock.MantleTest do
 
   alias ExAws.Bedrock
   alias ExAws.Bedrock.Mantle
-  alias ExAws.Operation.JSON
+  alias ExAws.Operation.BedrockMantle
 
   defmodule CaptureClient do
     def request(method, url, body, headers, _http_opts) do
@@ -14,7 +14,7 @@ defmodule ExAws.Bedrock.MantleTest do
 
   describe "list_models/0" do
     test "builds a Mantle OpenAI-compatible models request" do
-      assert %JSON{
+      assert %BedrockMantle{
                http_method: :get,
                path: "/v1/models",
                service: :bedrock,
@@ -27,7 +27,7 @@ defmodule ExAws.Bedrock.MantleTest do
     test "builds a Mantle Chat Completions request" do
       request = Mantle.chat_completion(%{"model" => "openai.gpt-oss-120b"})
 
-      assert %JSON{
+      assert %BedrockMantle{
                data: %{"model" => "openai.gpt-oss-120b"},
                http_method: :post,
                path: "/v1/chat/completions",
@@ -45,7 +45,7 @@ defmodule ExAws.Bedrock.MantleTest do
     test "builds a Mantle Responses request" do
       request = Mantle.response(%{"model" => "openai.gpt-oss-120b"})
 
-      assert %JSON{
+      assert %BedrockMantle{
                data: %{"model" => "openai.gpt-oss-120b"},
                http_method: :post,
                path: "/v1/responses",
@@ -63,7 +63,7 @@ defmodule ExAws.Bedrock.MantleTest do
     test "builds a Mantle Anthropic-compatible Messages request" do
       request = Mantle.message(%{"model" => "anthropic.claude-opus-4-7"})
 
-      assert %JSON{
+      assert %BedrockMantle{
                data: %{"model" => "anthropic.claude-opus-4-7"},
                http_method: :post,
                path: "/anthropic/v1/messages",
@@ -78,9 +78,10 @@ defmodule ExAws.Bedrock.MantleTest do
     end
   end
 
-  describe "Bedrock.request/2" do
-    test "routes Mantle operations through the Mantle host and signing service" do
-      request = Mantle.chat_completion(%{"model" => "openai.gpt-oss-120b", "messages" => []})
+  describe "Bedrock.request/2 — Mantle routing" do
+    test "POST chat_completion: Mantle host, bedrock-mantle signing, correct sha256" do
+      payload = %{"model" => "openai.gpt-oss-120b", "messages" => []}
+      request = Mantle.chat_completion(payload)
 
       assert {:ok, %{"ok" => true}} = Bedrock.request(request, ex_aws_config())
 
@@ -88,11 +89,58 @@ defmodule ExAws.Bedrock.MantleTest do
                        "https://bedrock-mantle.us-east-1.api.aws/v1/chat/completions", body,
                        headers}
 
-      assert %{"model" => "openai.gpt-oss-120b", "messages" => []} = Jason.decode!(body)
+      assert ^payload = Jason.decode!(body)
       assert {"host", "bedrock-mantle.us-east-1.api.aws"} in headers
 
       assert {"Authorization", authorization} = List.keyfind(headers, "Authorization", 0)
       assert authorization =~ "/us-east-1/bedrock-mantle/aws4_request"
+
+      # AWS-spec-correct content hash: equals sha256 of the actual wire body,
+      # never the literal "" that ExAws.Operation.JSON would inject.
+      assert {"x-amz-content-sha256", hash} =
+               List.keyfind(headers, "x-amz-content-sha256", 0)
+
+      assert hash == ExAws.Auth.Utils.hash_sha256(body)
+      refute hash == ""
+    end
+
+    test "GET list_models: no body, content hash is sha256(\"\")" do
+      assert {:ok, %{"ok" => true}} =
+               Bedrock.request(Mantle.list_models(), ex_aws_config())
+
+      assert_received {:request, :get,
+                       "https://bedrock-mantle.us-east-1.api.aws/v1/models", body, headers}
+
+      assert body == "", "GET to Mantle /v1/models must carry no body"
+
+      assert {"x-amz-content-sha256", hash} =
+               List.keyfind(headers, "x-amz-content-sha256", 0)
+
+      assert hash == ExAws.Auth.Utils.hash_sha256(""),
+             "GET content hash must be sha256(\"\") = e3b0c4… not sha256(\"{}\")"
+
+      # No content-length on an empty-body GET — RFC 7230 doesn't require it
+      # and we don't synthesise it.
+      refute List.keyfind(headers, "content-length", 0)
+    end
+
+    test "POST anthropic/v1/messages: Mantle host + anthropic-version header preserved" do
+      payload = %{"model" => "anthropic.claude-opus-4-7", "messages" => [], "max_tokens" => 16}
+      request = Mantle.message(payload)
+
+      assert {:ok, %{"ok" => true}} = Bedrock.request(request, ex_aws_config())
+
+      assert_received {:request, :post,
+                       "https://bedrock-mantle.us-east-1.api.aws/anthropic/v1/messages", body,
+                       headers}
+
+      assert ^payload = Jason.decode!(body)
+      assert {"anthropic-version", "2023-06-01"} in headers
+
+      assert {"x-amz-content-sha256", hash} =
+               List.keyfind(headers, "x-amz-content-sha256", 0)
+
+      assert hash == ExAws.Auth.Utils.hash_sha256(body)
     end
   end
 

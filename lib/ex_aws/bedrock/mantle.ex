@@ -2,11 +2,18 @@ defmodule ExAws.Bedrock.Mantle do
   @moduledoc """
   Operations for Amazon Bedrock Powered by AWS Mantle.
 
-  Mantle lives on `bedrock-mantle.<region>.api.aws`, but requests are still
-  normal ExAws operations. `ExAws.Bedrock.request/2`, `request!/2`, and
-  `stream!/2` attach the Mantle host and the `bedrock-mantle` SigV4 service
-  name when the operation path targets Mantle's OpenAI-compatible or
-  Anthropic-compatible API surfaces.
+  Mantle lives on `bedrock-mantle.<region>.api.aws` and exposes
+  OpenAI-compatible Chat Completions / Responses surfaces plus an
+  Anthropic-compatible Messages surface. Every constructor in this module
+  returns an `ExAws.Operation.BedrockMantle` — a dedicated operation type
+  that handles the Mantle wire shape: empty body on GETs, correct
+  `x-amz-content-sha256` header, Mantle host rewriting, `bedrock-mantle`
+  SigV4 signing, and OpenAI/Anthropic-shaped response parsing (no
+  AWS-`__type`-envelope assumption).
+
+  Stock Bedrock control-plane and Bedrock Runtime operations
+  (`ExAws.Bedrock.*`) continue to use `ExAws.Operation.JSON` — those
+  endpoints really are AWS JSON.
   """
 
   alias ExAws.Bedrock.Mantle.SSE
@@ -21,7 +28,7 @@ defmodule ExAws.Bedrock.Mantle do
   [AWS User Guide](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html)
   """
   def list_models do
-    %ExAws.Operation.JSON{
+    %ExAws.Operation.BedrockMantle{
       http_method: :get,
       path: "/v1/models",
       service: :bedrock
@@ -62,7 +69,7 @@ defmodule ExAws.Bedrock.Mantle do
   end
 
   defp operation(method, path, body, headers) do
-    post = %ExAws.Operation.JSON{
+    post = %ExAws.Operation.BedrockMantle{
       data: body,
       headers: headers,
       http_method: method,
