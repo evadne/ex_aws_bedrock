@@ -31,7 +31,7 @@ defmodule ExAws.Bedrock.Request do
   def request(op, config_overrides \\ [])
 
   def request(%ExAws.Operation.BedrockMantle{} = op, opts) do
-    ExAws.Operation.perform(op, ExAws.Config.new(:bedrock, opts))
+    ExAws.Operation.perform(op, mantle_config(opts))
   end
 
   def request(op, opts), do: ExAws.request(op, check_service_override(op, opts))
@@ -60,7 +60,7 @@ defmodule ExAws.Bedrock.Request do
   def stream!(op, config_overrides \\ [])
 
   def stream!(%ExAws.Operation.BedrockMantle{} = op, opts) do
-    ExAws.Operation.stream!(op, ExAws.Config.new(:bedrock, opts))
+    ExAws.Operation.stream!(op, mantle_config(opts))
   end
 
   def stream!(op, opts), do: ExAws.stream!(op, check_service_override(op, opts))
@@ -69,6 +69,16 @@ defmodule ExAws.Bedrock.Request do
     do: [{:service_override, :bedrock} | config_overrides]
 
   defp check_service_override(_op, config_overrides), do: config_overrides
+
+  # Build a fully-resolved ExAws config for a BedrockMantle op. `apply_routing`
+  # prepends Mantle host/scheme defaults; caller-supplied overrides (e.g. a
+  # Bypass `base_url` for tests) come later in the keyword list and win on
+  # `ExAws.Config.new/2`'s internal `Map.new` merge.
+  defp mantle_config(opts) do
+    opts
+    |> ExAws.Operation.BedrockMantle.apply_routing()
+    |> then(&ExAws.Config.new(:bedrock, &1))
+  end
 
   defp message(error) when is_binary(error), do: error
   defp message(error), do: inspect(error)

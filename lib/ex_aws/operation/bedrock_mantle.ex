@@ -69,24 +69,27 @@ defmodule ExAws.Operation.BedrockMantle do
   @mantle_host_template "bedrock-mantle.region.api.aws"
 
   @doc """
-  Apply the Mantle host rewrite and `bedrock-mantle` signing override to a
-  fully-resolved ExAws config.
+  Prepend Mantle host/scheme defaults to a `config_overrides` keyword list
+  before it is passed to `ExAws.Config.new/2`.
 
-  Returns the mutated config. Public so the streaming entry points
-  (`ExAws.Bedrock.Mantle.SSE.stream_raw!/3`) can share the exact same routing
-  without duplicating it.
+  The defaults come first in the keyword list so caller-supplied overrides
+  (e.g. a Bypass `base_url` injected via `host:` / `scheme:` / `port:`) win
+  on the subsequent `Map.new` merge inside `ExAws.Config.new/2`. This is the
+  same pattern the prior `ExAws.Bedrock.Request.mantle_config/1` shim used
+  and is what makes test-time mocking possible.
+
+  The `host` is encoded as a `{stub, host}` tuple — `ExAws.Config.parse_host_for_region/1`
+  substitutes the configured region into the template before signing.
+
+  No `:service_override` is set: the operation's own `service` field is
+  `:"bedrock-mantle"` and `ExAws.Auth.headers/6` uses it directly when no
+  override is present.
   """
-  def apply_routing(config) do
-    region = Map.get(config, :region) || "us-east-1"
-    host = String.replace(@mantle_host_template, "region", region)
-
-    config
-    |> Map.put(:host, host)
-    |> Map.put(:scheme, "https")
-    |> Map.put(:port, 443)
-    # No `:service_override` here — the operation's `service` field is
-    # already `:"bedrock-mantle"` and `ExAws.Auth.headers/6` will use it
-    # directly for signing.
+  def apply_routing(config_overrides) when is_list(config_overrides) do
+    [
+      scheme: "https",
+      host: {"region", @mantle_host_template}
+    ] ++ config_overrides
   end
 
   @doc """
@@ -142,7 +145,6 @@ defimpl ExAws.Operation, for: ExAws.Operation.BedrockMantle do
 
   def perform(operation, config) do
     operation = handle_before_request(operation, config)
-    config = BedrockMantle.apply_routing(config)
     url = ExAws.Request.Url.build(operation, config)
     body = BedrockMantle.encode_body(operation, config)
     headers = BedrockMantle.build_headers(operation, body)
@@ -167,7 +169,6 @@ defimpl ExAws.Operation, for: ExAws.Operation.BedrockMantle do
   end
 
   def stream!(%BedrockMantle{stream_builder: stream_builder}, config) do
-    config = BedrockMantle.apply_routing(config)
     stream_builder.(config)
   end
 

@@ -23,7 +23,6 @@ defmodule ExAws.Bedrock.Mantle.SSE do
     Stream raw SSE bytes from a Mantle response.
     """
     def stream_raw!(%ExAws.Operation.BedrockMantle{} = post_operation, _opts, config) do
-      config = ExAws.Operation.BedrockMantle.apply_routing(config)
       encoded_data = ExAws.Operation.BedrockMantle.encode_body(post_operation, config)
       url = build_request_url(post_operation, config)
 
