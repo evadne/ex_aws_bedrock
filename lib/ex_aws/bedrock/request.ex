@@ -23,6 +23,8 @@ defmodule ExAws.Bedrock.Request do
       plane): host and signing both `:bedrock`; nothing to override.
   """
 
+  alias ExAws.Operation.BedrockMantle
+
   @doc """
   Perform an AWS Bedrock request.
 
@@ -30,7 +32,7 @@ defmodule ExAws.Bedrock.Request do
   """
   def request(op, config_overrides \\ [])
 
-  def request(%ExAws.Operation.BedrockMantle{} = op, opts) do
+  def request(%BedrockMantle{} = op, opts) do
     ExAws.Operation.perform(op, mantle_config(opts))
   end
 
@@ -43,7 +45,7 @@ defmodule ExAws.Bedrock.Request do
   """
   def request!(op, config_overrides \\ [])
 
-  def request!(%ExAws.Operation.BedrockMantle{} = op, opts) do
+  def request!(%BedrockMantle{} = op, opts) do
     case request(op, opts) do
       {:ok, result} -> result
       {:error, error} -> raise ExAws.Error, message(error)
@@ -59,14 +61,17 @@ defmodule ExAws.Bedrock.Request do
   """
   def stream!(op, config_overrides \\ [])
 
-  def stream!(%ExAws.Operation.BedrockMantle{} = op, opts) do
+  def stream!(%BedrockMantle{} = op, opts) do
     ExAws.Operation.stream!(op, mantle_config(opts))
   end
 
   def stream!(op, opts), do: ExAws.stream!(op, check_service_override(op, opts))
 
-  defp check_service_override(%ExAws.Operation.JSON{service: :"bedrock-runtime"}, config_overrides),
-    do: [{:service_override, :bedrock} | config_overrides]
+  defp check_service_override(
+         %ExAws.Operation.JSON{service: :"bedrock-runtime"},
+         config_overrides
+       ),
+       do: [{:service_override, :bedrock} | config_overrides]
 
   defp check_service_override(_op, config_overrides), do: config_overrides
 
@@ -76,7 +81,7 @@ defmodule ExAws.Bedrock.Request do
   # `ExAws.Config.new/2`'s internal `Map.new` merge.
   defp mantle_config(opts) do
     opts
-    |> ExAws.Operation.BedrockMantle.apply_routing()
+    |> BedrockMantle.apply_routing()
     |> then(&ExAws.Config.new(:bedrock, &1))
   end
 

@@ -1,6 +1,7 @@
 defmodule ExAws.Bedrock.MantleTest do
   use ExUnit.Case, async: true
 
+  alias ExAws.Auth.Utils
   alias ExAws.Bedrock
   alias ExAws.Bedrock.Mantle
   alias ExAws.Operation.BedrockMantle
@@ -100,7 +101,7 @@ defmodule ExAws.Bedrock.MantleTest do
       assert {"x-amz-content-sha256", hash} =
                List.keyfind(headers, "x-amz-content-sha256", 0)
 
-      assert hash == ExAws.Auth.Utils.hash_sha256(body)
+      assert hash == Utils.hash_sha256(body)
       refute hash == ""
     end
 
@@ -108,15 +109,15 @@ defmodule ExAws.Bedrock.MantleTest do
       assert {:ok, %{"ok" => true}} =
                Bedrock.request(Mantle.list_models(), ex_aws_config())
 
-      assert_received {:request, :get,
-                       "https://bedrock-mantle.us-east-1.api.aws/v1/models", body, headers}
+      assert_received {:request, :get, "https://bedrock-mantle.us-east-1.api.aws/v1/models", body,
+                       headers}
 
       assert body == "", "GET to Mantle /v1/models must carry no body"
 
       assert {"x-amz-content-sha256", hash} =
                List.keyfind(headers, "x-amz-content-sha256", 0)
 
-      assert hash == ExAws.Auth.Utils.hash_sha256(""),
+      assert hash == Utils.hash_sha256(""),
              "GET content hash must be sha256(\"\") = e3b0c4… not sha256(\"{}\")"
 
       # No content-length on an empty-body GET — RFC 7230 doesn't require it
@@ -140,7 +141,7 @@ defmodule ExAws.Bedrock.MantleTest do
       assert {"x-amz-content-sha256", hash} =
                List.keyfind(headers, "x-amz-content-sha256", 0)
 
-      assert hash == ExAws.Auth.Utils.hash_sha256(body)
+      assert hash == Utils.hash_sha256(body)
     end
   end
 

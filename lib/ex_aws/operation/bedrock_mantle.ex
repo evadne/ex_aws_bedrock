@@ -42,6 +42,8 @@ defmodule ExAws.Operation.BedrockMantle do
   `ExAws.Operation.JSON` because those endpoints really are AWS JSON.
   """
 
+  alias ExAws.Auth.Utils
+
   defstruct stream_builder: nil,
             parser: &Function.identity/1,
             error_parser: &Function.identity/1,
@@ -118,7 +120,7 @@ defmodule ExAws.Operation.BedrockMantle do
   caller-supplied values for these two headers.
   """
   def build_headers(%__MODULE__{} = operation, body) do
-    hashed_payload = ExAws.Auth.Utils.hash_sha256(body)
+    hashed_payload = Utils.hash_sha256(body)
 
     operation.headers
     |> upsert_header("x-amz-content-sha256", hashed_payload)

@@ -10,25 +10,33 @@ defmodule ExAws.Bedrock.Mantle.SSE do
 
   defdelegate build_request_url(post_operation, config), to: ExAws.Request.Url, as: :build
 
+  alias ExAws.Bedrock.Mantle.StreamError
+  alias ExAws.Operation.BedrockMantle, as: BedrockMantleOperation
+
   @content_type "text/event-stream"
 
   if {:module, :hackney} == Code.ensure_loaded(:hackney) &&
        Kernel.function_exported?(:hackney, :post, 4) do
-    @http_ua :hackney_request.default_ua()
+    if function_exported?(:hackney, :default_ua, 0) do
+      @http_ua :hackney.default_ua()
+    else
+      @http_ua :hackney_request.default_ua()
+    end
+
     @library_version Application.spec(:ex_aws_bedrock)[:vsn]
     @user_agent "#{@http_ua} ex_aws/bedrock/#{@library_version}"
-    @hackney_options [{:async, :once}]
+    @hackney_options [{:async, :once}, {:protocols, [:http1]}]
 
     @doc """
     Stream raw SSE bytes from a Mantle response.
     """
-    def stream_raw!(%ExAws.Operation.BedrockMantle{} = post_operation, _opts, config) do
-      encoded_data = ExAws.Operation.BedrockMantle.encode_body(post_operation, config)
+    def stream_raw!(%BedrockMantleOperation{} = post_operation, _opts, config) do
+      encoded_data = BedrockMantleOperation.encode_body(post_operation, config)
       url = build_request_url(post_operation, config)
 
       headers =
         post_operation
-        |> ExAws.Operation.BedrockMantle.build_headers(encoded_data)
+        |> BedrockMantleOperation.build_headers(encoded_data)
         |> List.keystore("user-agent", 0, {"user-agent", @user_agent})
 
       {:ok, full_headers} =
@@ -41,48 +49,105 @@ defmodule ExAws.Bedrock.Mantle.SSE do
           encoded_data
         )
 
+      hackney_opts = hackney_options(config)
+
       request_fun = fn [] ->
-        {:ok, ref} = :hackney.post(url, full_headers, encoded_data, @hackney_options)
+        {:ok, ref} = :hackney.post(url, full_headers, encoded_data, hackney_opts)
 
         receive do
           {:hackney_response, ^ref, {:status, 200, _reason}} ->
-            ref
+            {:streaming, ref}
 
           {:hackney_response, ^ref, {:status, status, reason}} ->
-            {:error, status, reason}
+            {:http_error, ref, status, reason, [], []}
 
-          {:hackney_response, ^ref, {:error, {:closed, :timeout}}} ->
-            :closed
+          {:hackney_response, ^ref, {:error, reason}} ->
+            raise_transport_error(ref, reason)
         end
       end
 
       Stream.resource(
         fn -> request_fun.([]) end,
         fn
-          :closed ->
-            {:halt, []}
-
-          {:error, status, reason} ->
-            raise ExAws.Error, "#{to_string(status)}: #{to_string(reason)}"
-
-          ref when is_reference(ref) ->
+          {:streaming, ref} ->
             :ok = :hackney.stream_next(ref)
 
             receive do
               {:hackney_response, ^ref, {:headers, headers}} ->
                 verify_event_stream!(headers)
-                {[], ref}
+                {[], {:streaming, ref}}
 
               {:hackney_response, ^ref, :done} ->
-                {:halt, []}
+                {:halt, {:done, ref}}
 
-              {:hackney_response, ^ref, data} ->
-                {[data], ref}
+              {:hackney_response, ^ref, {:error, reason}} ->
+                raise_transport_error(ref, reason)
+
+              {:hackney_response, ^ref, data} when is_binary(data) ->
+                {[data], {:streaming, ref}}
+
+              {:hackney_response, ^ref, other} ->
+                raise_transport_error(ref, {:unexpected_message, other})
+            end
+
+          {:http_error, ref, status, reason, headers, body} ->
+            :ok = :hackney.stream_next(ref)
+
+            receive do
+              {:hackney_response, ^ref, {:headers, headers}} ->
+                {[], {:http_error, ref, status, reason, headers, body}}
+
+              {:hackney_response, ^ref, :done} ->
+                raise_http_error(ref, status, reason, headers, body)
+
+              {:hackney_response, ^ref, {:error, transport_reason}} ->
+                raise_http_error(ref, status, transport_reason, headers, body)
+
+              {:hackney_response, ^ref, data} when is_binary(data) ->
+                {[], {:http_error, ref, status, reason, headers, [data | body]}}
+
+              {:hackney_response, ^ref, other} ->
+                raise_http_error(ref, status, {:unexpected_message, other}, headers, body)
             end
         end,
-        &Function.identity/1
+        &close/1
       )
     end
+
+    @doc false
+    def hackney_options(config) do
+      config
+      |> Map.get(:http_opts, [])
+      |> Keyword.merge(@hackney_options)
+    end
+
+    defp raise_http_error(ref, status, reason, headers, body) do
+      close(ref)
+
+      raise StreamError,
+        kind: :http,
+        status: status,
+        headers: headers,
+        response_body: body |> Enum.reverse() |> IO.iodata_to_binary(),
+        reason: reason
+    end
+
+    defp raise_transport_error(ref, reason) do
+      close(ref)
+      raise StreamError, kind: :transport, reason: reason
+    end
+
+    defp close({state, ref}) when state in [:streaming, :done], do: close(ref)
+    defp close({:http_error, ref, _status, _reason, _headers, _body}), do: close(ref)
+
+    defp close(ref) when is_reference(ref) or is_pid(ref) do
+      :hackney.close(ref)
+      :ok
+    catch
+      :exit, _reason -> :ok
+    end
+
+    defp close(_state), do: :ok
 
     defp verify_event_stream!(headers) do
       verify_content_type!(headers, @content_type)
